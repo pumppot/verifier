@@ -118,7 +118,12 @@ def calculate_all_rewards_from_package(
     if lottery_winner_wallet:
         total_participants = len(lottery_participants)
         win_chance = (1 / total_participants) * 100 if total_participants > 0 else 100.0
-        results["lottery"] = {"wallet": lottery_winner_wallet, "metric": final_balances.get(lottery_winner_wallet, 0), "win_chance_percent": win_chance}
+        results["lottery"] = {
+            "wallet": lottery_winner_wallet,
+            "metric": final_balances.get(lottery_winner_wallet, 0),
+            "win_chance_percent": win_chance,
+            "total_participants": total_participants
+        }
     else: results["lottery"] = None
     return results
 
@@ -158,14 +163,18 @@ def print_winner_report(winners: Dict):
         print(f"\n🏆 {category_title}:")
         if winner_data:
             print(f"  - Wallet:       {winner_data['wallet']}")
-            # Display win chance for all categories
             if 'win_chance_percent' in winner_data:
                 print(f"  - Win Chance:   {winner_data['win_chance_percent']:.4f}%")
-            # Category-specific details
+
             if category == 'active_holder':
                  print(f"  - Holdings:     {winner_data.get('final_balance', 0):.2f} (Started with {winner_data.get('start_balance', 0):.2f})")
+            elif category == 'lottery':
+                 print(f"  - Holdings:     {winner_data.get('metric', 0):.2f}")
+                 if 'total_participants' in winner_data:
+                     print(f"  - Contenders:   {winner_data['total_participants']}")
             elif 'metric' in winner_data:
                 print(f"  - Metric Value: {winner_data['metric']:.2f}")
+
             if 'tx_signature' in winner_data and winner_data['tx_signature']:
                 print(f"  - Winning TX:   {winner_data['tx_signature']}")
             if 'buys' in winner_data:
