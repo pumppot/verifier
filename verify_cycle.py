@@ -133,25 +133,26 @@ def load_verification_package(directory: str) -> Dict:
     if not os.path.isdir(directory):
         raise FileNotFoundError(f"Verification directory not found: {directory}")
     print(f"--- Loading Verification Package from '{os.path.basename(directory)}' ---")
-    files = {"metadata": os.path.join(directory, "metadata.json"), "initial_balances": os.path.join(directory, "initial_balances.parquet"), "processed_swaps": os.path.join(directory, "processed_swaps.parquet"), "final_balances": os.path.join(directory, "final_balances.parquet")}
+    files = {"metadata": os.path.join(directory, "metadata.json"), "balances": os.path.join(directory, "balances.parquet"), "processed_swaps": os.path.join(directory, "processed_swaps.parquet")}
     for name, path in files.items():
         if not os.path.exists(path): raise FileNotFoundError(f"Missing required file in package: {os.path.basename(path)}")
     with open(files["metadata"], 'r') as f: metadata = json.load(f)
-    initial_df = pd.read_parquet(files["initial_balances"])
+    balances_df = pd.read_parquet(files["balances"])
     swaps_df = pd.read_parquet(files["processed_swaps"])
-    final_df = pd.read_parquet(files["final_balances"])
     print("  - Successfully loaded all data files and metadata.")
-    return {"metadata": metadata, "initial_balances_df": initial_df, "processed_swaps_df": swaps_df, "final_balances_df": final_df}
+    return {"metadata": metadata, "balances_df": balances_df, "processed_swaps_df": swaps_df}
 
 def prepare_data_for_calculation(package: Dict) -> Dict:
-    initial_balances_snapshot = {row['wallet']: row['amount'] for _, row in package["initial_balances_df"].iterrows()}
+    initial_balances_snapshot = {row['wallet']: row['start_balance'] for _, row in package["balances_df"].iterrows()}
     initial_balances_snapshot['_start_signature'] = package["metadata"].get("start_signature")
     cycle_stats_snapshot = {row['wallet']: row.to_dict() for _, row in package["processed_swaps_df"].iterrows()}
-    token_holders = package["final_balances_df"].rename(columns={'wallet': 'address'}).to_dict('records')
+    token_holders = package["balances_df"][['wallet', 'final_balance']].rename(columns={'wallet': 'address', 'final_balance': 'amount'}).to_dict('records')
     print("\n--- Data prepared for recalculation ---")
-    print(f"  - Initial Holders: {len(initial_balances_snapshot) - 1}")
+    initial_holder_count = sum(1 for balance in initial_balances_snapshot.values() if isinstance(balance, (int, float)) and balance > 0)
+    print(f"  - Initial Holders: {initial_holder_count}")
     print(f"  - Traders This Cycle: {len(cycle_stats_snapshot)}")
-    print(f"  - Final Holders: {len(token_holders)}")
+    final_holder_count = sum(1 for holder in token_holders if holder['amount'] > 0)
+    print(f"  - Final Holders: {final_holder_count}")
     return {"token_holders": token_holders, "cycle_stats_snapshot": cycle_stats_snapshot, "initial_balances_snapshot": initial_balances_snapshot}
 
 def print_winner_report(winners: Dict):
@@ -182,8 +183,7 @@ def print_winner_report(winners: Dict):
         else:
             print("  - No eligible winner was found for this category.")
     print("\n" + "=" * 50)
-    print("✅ Verification script finished successfully.")
-    print("This result is deterministic. Running the script on the same package will always yield the same winners.")
+    print("✅ Verification script finished successfully.\n")
 
 def main():
     parser = argparse.ArgumentParser(description="Verifies the results of a Pump Pot reward cycle.", formatter_class=argparse.RawTextHelpFormatter)
@@ -192,13 +192,22 @@ def main():
     try:
         package = load_verification_package(args.packagedir)
         calculation_inputs = prepare_data_for_calculation(package)
+
         print("\n--- Running deterministic winner calculation... ---")
+        metadata = package["metadata"]
+        seed = metadata.get("verification_seed")
+        slot = metadata.get("verification_slot")
+        print(f"  - Using deterministic seed from Solana block: {slot}")
+        print(f"  - Seed (Blockhash): {seed}")
+        if not seed:
+            raise KeyError("Verification seed not found in metadata.json")
+
         verified_winners = calculate_all_rewards_from_package(
             token_holders=calculation_inputs["token_holders"],
             cycle_stats_snapshot=calculation_inputs["cycle_stats_snapshot"],
             initial_balances_snapshot=calculation_inputs["initial_balances_snapshot"],
-            verification_seed=package["metadata"]["verification_seed"],
-            rules=package["metadata"]["rules"]
+            verification_seed=seed,
+            rules=metadata["rules"]
         )
         print_winner_report(verified_winners)
     except (FileNotFoundError, KeyError, Exception) as e:
