@@ -1,4 +1,4 @@
-# Pump Pot - Reward Verification Script
+# PUMP POT - Reward Verification Script
 
 This repository contains the official, standalone Python script to independently verify the results of any Pump Pot raffle cycle.
 
@@ -59,4 +59,4 @@ The winners and metrics in this report should match the winners announced on the
 
 ### The Principle of Determinism
 
-The script's randomness is seeded by the Solana blockhash recorded at the end of the raffle cycle, which is included in the data package's `metadata.json` file. By using a public, on-chain, and unpredictable value as the seed, we ensure that the "random" selection process is fair and can be reproduced by anyone.
+The script's randomness is seeded by the **finalized Solana slot number** recorded at the exact end of the raffle cycle. This number is included in the data package's `metadata.json` file. By using a public, on-chain, and unpredictable value as the seed, we ensure that the "random" selection process is fair and can be reproduced by anyone. You can verify the existence and timestamp of any slot on a public block explorer.
